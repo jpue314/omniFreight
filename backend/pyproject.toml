@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 120
+exclude = ["migrations", ".venv", "__pycache__"]
+
+[tool.ruff.lint]
+# E9xx  — syntax errors (always enforce)
+# F63x  — invalid escape sequences
+# F7xx  — syntax errors
+# F82x  — undefined names
+# Start minimal; expand as the codebase matures.
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.bandit]
+# B101 — assert used in tests (expected)
+# B105 — hardcoded password in test fixtures (low severity, not production)
+# B106 — hardcoded password function arg (same reason)
+skips = ["B101", "B105", "B106"]
+exclude_dirs = ["tests", "migrations", ".venv"]
