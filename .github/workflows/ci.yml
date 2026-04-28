@@ -100,7 +100,8 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
       - name: Audit dependencies
-        run: pip-audit --skip-editable
+        # Scope to requirements.txt only — runner tools (pip, setuptools) are not our deps
+        run: pip-audit -r requirements.txt
         working-directory: backend
 
   migration-checks:
