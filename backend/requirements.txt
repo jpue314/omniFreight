@@ -1,0 +1,36 @@
+# Django core
+Django==5.1.*
+djangorestframework==3.15.*
+django-cors-headers==4.4.*
+
+# Auth
+djangorestframework-simplejwt==5.5.*
+
+# Database
+psycopg2-binary==2.9.*
+
+# Task queue
+celery==5.4.*
+redis==5.1.*
+django-celery-beat==2.7.*
+
+# Environment / config
+django-environ==0.11.*
+
+# Storage
+django-storages==1.14.*
+boto3==1.35.*
+
+# Images
+Pillow==12.*
+
+# Production server
+gunicorn==23.*
+
+# Dev / testing
+pytest==9.*
+pytest-django==4.9.*
+factory-boy==3.3.*
+
+# Dev utilities
+django-extensions==3.2.*
