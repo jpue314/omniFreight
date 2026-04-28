@@ -4,19 +4,21 @@
 |---|---|
 | Date | 2026-04-27 |
 | Status | Approved |
-| Scope | CI/CD pipeline, GitHub workflow, security hardening, API conventions |
+| Scope | CI/CD pipeline, GitHub workflow, security hardening, environment strategy, API conventions, vendor decoupling |
 
 ---
 
 ## 1. Overview
 
-This document specifies the GitHub workflow, CI/CD pipeline, and security baseline for omniFreight Phase 1. All decisions are scoped to the GitHub Flow model using Railway for development hosting, with a future migration path to Hetzner VPS for production.
+This document specifies the GitHub workflow, CI/CD pipeline, environment strategy, security baseline, and vendor-decoupling architecture for omniFreight Phase 1. All decisions are scoped to the GitHub Flow model using Railway for staging, with a clean migration path to Hetzner VPS for production.
 
-Security controls in this design are implemented in compliance with the **OWASP Top 10 (2021)** and the Non-Functional Requirements defined in `omniFreight_Requirements_v1.md` Section 5, specifically:
+Security controls in this design are implemented in compliance with the **OWASP Top 10 (2021)**, the **OWASP API Security Top 10 (2023)**, and the Non-Functional Requirements defined in `omniFreight_Requirements_v1.md` Section 5, specifically:
 - Role-based access enforced on all API endpoints
 - No unauthenticated access to any data
 - All creates, edits, and deletes logged with user and timestamp
 - Architecture must support growth without redesign
+
+The design is built to pass a penetration test at any point during Phase 1 — not just at launch. Controls are applied from the first line of feature code.
 
 ---
 
@@ -222,7 +224,175 @@ This document replaces tribal knowledge about how work is tracked and reviewed �
 
 ---
 
-## 8. Summary Checklist
+## 8. Environment Strategy
+
+### 8.1 Four Environments, Two Deployed Now
+
+| Environment | Settings file | Runs on | Deployed now? | Purpose |
+|---|---|---|---|---|
+| `local` | `config.settings.dev` | Docker Compose | Yes — always | Active development and manual testing |
+| `test` (CI) | `config.settings.test` | GitHub Actions (ephemeral) | Yes — every PR | Automated test suite, migration checks, security scans |
+| `staging` | `config.settings.staging` | Railway | Yes — free tier | Integration testing, PR review, pre-merge validation |
+| `production` | `config.settings.prod` | Hetzner VPS | **Deferred until go-live** | Real users, real data |
+
+Railway is **staging**, not production. This distinction matters: staging uses production-like security settings (HTTPS, HSTS, secure cookies) but development data. It is the environment where work is reviewed before it is considered done — not where real users operate.
+
+### 8.2 Settings Inheritance
+
+```
+base.py          <- shared config for all environments
+├── dev.py       <- local Docker Compose (DEBUG=True, relaxed CORS)
+├── test.py      <- CI (fast Postgres, no email, fast password hashing)
+├── staging.py   <- Railway (inherits prod.py security, Railway env vars)
+└── prod.py      <- Hetzner VPS (full production config, S3, SendGrid)
+```
+
+`staging.py` inherits from `prod.py` directly:
+
+```python
+from .prod import *  # all security settings apply in staging too
+```
+
+This means staging catches production-specific bugs (SSL redirects, missing env vars, HSTS issues) before they reach real users.
+
+### 8.3 Environment Variables Per Environment
+
+| Variable | local | test/CI | staging | production |
+|---|---|---|---|---|
+| `DEBUG` | `True` | `False` | `False` | `False` |
+| `DJANGO_SETTINGS_MODULE` | `config.settings.dev` | `config.settings.test` | `config.settings.staging` | `config.settings.prod` |
+| `DATABASE_URL` | Docker Compose Postgres | GitHub Actions Postgres service | Railway Postgres plugin | Hetzner managed Postgres |
+| `SECRET_KEY` | `.env` (local only, never committed) | GitHub Actions secret | Railway Variables | Hetzner server env |
+| `ALLOWED_HOSTS` | `*` | `testserver` | `<app>.railway.app` | `yourdomain.com` |
+
+No environment variable values are ever committed to the repository.
+
+---
+
+## 9. Vendor Decoupling Architecture
+
+The goal is that switching from Railway to Hetzner, or from SendGrid to another email provider, or from AWS S3 to Hetzner Object Storage, requires **only environment variable changes** — never application code changes.
+
+### 9.1 What Is Decoupled and How
+
+| Concern | Decoupling mechanism | Switch cost |
+|---|---|---|
+| **Database** | `DATABASE_URL` env var parsed by `django-environ` — any Postgres URL works | Change one env var |
+| **File storage** | `django-storages` + `DEFAULT_FILE_STORAGE` setting — S3-compatible API works for AWS S3, Hetzner Object Storage, MinIO | Change 4 env vars |
+| **Email** | Django's `EMAIL_BACKEND` setting — swap SendGrid for any SMTP provider | Change 2–3 env vars |
+| **Task queue** | `CELERY_BROKER_URL` env var — any Redis-compatible broker | Change one env var |
+| **Deployment** | Docker Compose defines the full stack — same containers run on Railway or any VPS with Docker | No code change |
+| **Static files** | `whitenoise` serves static files from Django — no Nginx dependency for static assets | No change needed |
+| **Frontend** | Vite produces a static build — deployable to any static host, CDN, or served by Django/Nginx | No code change |
+
+### 9.2 What Must Never Be Hardcoded
+
+The following must never appear in application code — only in environment variables or settings files:
+- Hostnames, domains, or IP addresses
+- Database connection strings
+- S3 bucket names or regions
+- API keys of any kind
+- Service-specific initialization that is not behind a settings abstraction
+
+### 9.3 Hetzner Object Storage Compatibility
+
+Hetzner Object Storage is S3-compatible. The switch from AWS S3 to Hetzner Object Storage requires only two additional settings in `staging.py` or `prod.py`:
+
+```python
+AWS_S3_ENDPOINT_URL = "https://<region>.your-objectstorage.com"
+AWS_S3_REGION_NAME  = "eu-central-1"
+```
+
+No other application code changes. `django-storages` handles both backends transparently.
+
+---
+
+## 10. Penetration Test Readiness and Forward Cybersecurity
+
+This section documents controls applied so omniFreight can pass a penetration test at any point during Phase 1 — not just at launch. Controls are applied from the first line of feature code.
+
+### 10.1 OWASP Web Application Top 10 (2021)
+
+| OWASP ID | Risk | Control in omniFreight |
+|---|---|---|
+| A01 — Broken Access Control | User A reads User B's data | Object-level permission checks on every ViewSet. `IsAuthenticated` global default. Role checks via `IsAdmin`/`IsStaff` permission classes. |
+| A02 — Cryptographic Failures | Plaintext secrets, weak tokens | `SECRET_KEY` via env var only. JWT blacklist on rotation. HTTPS enforced in staging + prod. HSTS with preload. |
+| A03 — Injection | SQL injection, command injection | Django ORM only — no raw SQL in application code. `bandit` SAST in CI flags unsafe subprocess calls and raw query patterns. |
+| A04 — Insecure Design | Architectural flaws | API-first, role-based from day one. Audit log on all writes. UUID primary keys prevent enumeration attacks. |
+| A05 — Security Misconfiguration | DEBUG in prod, open CORS, exposed admin | `DEBUG=False` globally by default. CORS explicitly whitelisted per environment. `ALLOWED_HOSTS` locked. `bandit` in CI. |
+| A06 — Vulnerable Components | Outdated dependencies with known CVEs | `pip-audit` + `npm audit` in CI every PR. Dependabot opens update PRs weekly. |
+| A07 — Auth Failures | Brute force, token theft | DRF throttling on token endpoint (20 req/min). JWT blacklist on rotation. 60-min access token lifetime. |
+| A08 — Software Integrity Failures | Tampered dependencies | `pip-audit` checks PyPI Advisory Database. `npm audit` checks npm advisory database. |
+| A09 — Logging and Monitoring Failures | No record of attacks in progress | Django logging config captures all 4xx/5xx with user + IP + timestamp. Auth and payment events logged at WARNING level. |
+| A10 — SSRF | Server triggers internal requests via user input | No user-supplied URLs used in server-side requests in Phase 1. Phase 2 carrier API polling validates against an allowlist of known carrier hostnames only. |
+
+### 10.2 OWASP API Security Top 10 (2023)
+
+Because omniFreight is API-first, the API Top 10 is equally important.
+
+| OWASP API ID | Risk | Control in omniFreight |
+|---|---|---|
+| API1 — Broken Object Level Auth | User A reads User B's shipment by guessing UUID | Every queryset filtered to `request.user` scope. Tests verify cross-user data isolation on every endpoint. |
+| API2 — Broken Authentication | Token brute force, missing expiry | Rate limiting on token endpoint. JWT expiry enforced. Blacklist on rotation. |
+| API3 — Broken Object Property Exposure | Serializer leaks internal fields | All serializers use explicit `fields` lists — never `fields = '__all__'`. |
+| API4 — Unrestricted Resource Consumption | Unbounded list responses, large file uploads | DRF pagination global (`PAGE_SIZE=50`). File upload size limit enforced at Django level. |
+| API5 — Broken Function Level Auth | Staff calling admin-only endpoints | Every admin action gated by `IsAdmin` permission class. CI tests verify Staff receives 403 on admin endpoints. |
+| API6 — Unrestricted Sensitive Business Flows | Payment status changed without audit trail | Payment status transitions validated. Every change audit-logged with user + timestamp. |
+| API7 — Server-Side Request Forgery | URL fields used in server-side HTTP calls | `reorder_url` and `website` fields are stored strings only — never fetched server-side in Phase 1. |
+| API8 — Security Misconfiguration | Verbose error responses, open CORS | `DEBUG=False` in staging + prod suppresses stack traces. Custom exception handler returns clean `{errors}` envelope only. |
+| API9 — Improper Inventory Management | Undocumented or shadow API endpoints | All endpoints under `/api/v1/`. No unversioned routes. DRF browsable API disabled in staging + prod. |
+| API10 — Unsafe API Consumption | Trusting external API responses without validation | Phase 2 carrier API responses validated and sanitized before writing to DB. Schema validated with DRF serializers. |
+
+### 10.3 Additional Security Controls
+
+**Content Security Policy (CSP):**
+`django-csp` added to middleware. Restricts which sources the browser trusts for scripts and styles — limits XSS payload execution even if an injection vulnerability is found.
+
+```python
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_SCRIPT_SRC  = ("'self'",)
+CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'")  # required for Tailwind
+```
+
+**File Upload Security (Phase 1B — document attachments):**
+- Server-side MIME type validation (not extension check only)
+- Maximum file size enforced (10 MB default)
+- Files stored in S3/Hetzner Object Storage, accessed via presigned URLs — never served through Django
+- Filenames sanitized before storage to prevent path traversal
+
+**Audit Logging:**
+`django-auditlog` installed to log all model changes with user, timestamp, changed fields, and previous values. Directly satisfies the requirements doc non-functional requirement: *"All creates, edits, and deletes are logged with user and timestamp. Payment records are immutable once Confirmed."*
+
+**Security Headers (full set applied in staging + prod):**
+
+| Header | Mechanism |
+|---|---|
+| `Strict-Transport-Security` | `SECURE_HSTS_SECONDS` in `prod.py` (already set) |
+| `X-Frame-Options: DENY` | `XFrameOptionsMiddleware` (already in place) |
+| `X-Content-Type-Options: nosniff` | `SECURE_CONTENT_TYPE_NOSNIFF = True` added to `prod.py` |
+| `Content-Security-Policy` | `django-csp` middleware |
+| `Referrer-Policy` | `SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"` added to `prod.py` |
+
+**Secrets Never in Code:**
+Enforced by three independent layers: `.gitignore` excludes `.env`, GitHub secret scanning blocks commits containing secret patterns, `bandit` SAST flags hardcoded credential-shaped strings.
+
+### 10.4 Pre-Milestone Penetration Test Checklist
+
+Before marking any Phase 1 milestone complete, run the following manual checks:
+
+- [ ] Access another user's record by substituting a known UUID in the URL — expect 403 or 404
+- [ ] Send 25 rapid login attempts to `/api/v1/auth/token/` — expect 429 (too many requests) after 20
+- [ ] Send a request with a malformed or expired Bearer token — expect 401
+- [ ] As a Staff user, attempt to change another user's role — expect 403
+- [ ] Upload a file with a script-language extension and matching header bytes — expect 400
+- [ ] Confirm all error responses in staging contain no stack traces or internal paths
+- [ ] Trigger a deliberate 404 in staging — confirm no debug page is served
+- [ ] Run `pip-audit` and `npm audit` locally — expect zero high or critical findings
+- [ ] Check response headers in staging with browser DevTools — confirm CSP, HSTS, X-Frame-Options are present
+
+---
+
+## 11. Summary Checklist
 
 ### Files to create (Claude handles these)
 - `.github/workflows/ci.yml`
@@ -234,17 +404,19 @@ This document replaces tribal knowledge about how work is tracked and reviewed �
 - `issues.md` (populated with conventions)
 
 ### Files to modify (Claude handles these)
-- `backend/requirements.txt` — add `whitenoise`, `bandit`, `pip-audit`, `pre-commit`
-- `backend/config/settings/base.py` — JWT blacklist, DRF throttling, whitenoise middleware, `/api/v1/` URLs
-- `backend/config/settings/prod.py` — whitenoise storage backend
+- `backend/requirements.txt` — add `whitenoise`, `bandit`, `pip-audit`, `pre-commit`, `django-csp`, `django-auditlog`
+- `backend/config/settings/base.py` — JWT blacklist, DRF throttling, whitenoise middleware, `/api/v1/` URLs, CSP, audit log
+- `backend/config/settings/prod.py` — whitenoise storage, `SECURE_CONTENT_TYPE_NOSNIFF`, `SECURE_REFERRER_POLICY`
+- `backend/config/settings/staging.py` — new file, inherits from `prod.py`
+- `backend/config/settings/test.py` — new file, fast CI config
 - `omniFreight_Requirements_v1.md` — carrier API correction, OWASP compliance note
 
 ### Manual setup steps (you must do these — no one else can)
-See Section 9 for full step-by-step instructions.
+See Section 12 for full step-by-step instructions.
 
 ---
 
-## 9. Manual Setup Guide
+## 12. Manual Setup Guide
 
 These steps require your credentials or account access and cannot be automated. Each step notes what it enables and why it cannot be skipped.
 
