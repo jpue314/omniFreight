@@ -129,10 +129,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
         working-directory: backend
-      - name: Check no unapplied migrations
-        run: python manage.py migrate --check
+      - name: Apply migrations
+        run: python manage.py migrate
         working-directory: backend
-      - name: Check no missing migrations
+      - name: Check no missing migrations in codebase
         run: python manage.py makemigrations --check --dry-run
         working-directory: backend
 
