@@ -5,6 +5,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
     TokenBlacklistView,
 )
+from apps.inventory.views import ReorderQueueView
 
 v1 = [
     path("auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
@@ -15,6 +16,8 @@ v1 = [
     path("vendors/", include("apps.vendors.urls")),
     path("machines/", include("apps.machines.urls")),
     path("health/", include("apps.users.health_urls")),
+    path("inventory/", include("apps.inventory.urls")),
+    path("reorder/", ReorderQueueView.as_view(), name="reorder-queue"),
 ]
 
 urlpatterns = [
