@@ -2,14 +2,14 @@ from rest_framework import viewsets, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.mixins import AuditMixin
+from apps.core.mixins import AuditMixin, EnvelopeMixin
 from apps.core.pagination import StandardPagination
 from apps.users.permissions import IsAdminOrReadOnly
 from .models import Vendor
 from .serializers import VendorSerializer
 
 
-class VendorViewSet(AuditMixin, viewsets.ModelViewSet):
+class VendorViewSet(EnvelopeMixin, AuditMixin, viewsets.ModelViewSet):
     serializer_class = VendorSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
     pagination_class = StandardPagination

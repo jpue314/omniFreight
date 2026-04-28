@@ -8,7 +8,7 @@ class VendorFactory(factory.django.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: f"Vendor {n}")
     type = Vendor.Type.SUPPLIER
-    primary_contact_name = "Jane Smith"
+    primary_contact_name = factory.Sequence(lambda n: f"Contact {n}")
     primary_contact_email = factory.LazyAttribute(
         lambda o: f"contact@{o.name.lower().replace(' ', '')}.com"
     )
