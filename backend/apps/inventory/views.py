@@ -18,6 +18,13 @@ from .services import record_transaction
 class InventoryItemViewSet(EnvelopeMixin, AuditMixin, viewsets.ModelViewSet):
     serializer_class = InventoryItemSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
+
+    def get_permissions(self):
+        # Recording transactions and marking ordered are staff-level actions.
+        # All other writes (create/update/delete items) are admin-only.
+        if self.action in ("transactions", "mark_ordered"):
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
     pagination_class = StandardPagination
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "sku"]
