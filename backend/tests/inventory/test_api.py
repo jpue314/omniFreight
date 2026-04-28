@@ -1,6 +1,9 @@
 import pytest
 from decimal import Decimal
+from django.db import transaction
 from tests.inventory.factories import InventoryItemFactory
+from apps.inventory.services import record_transaction
+from apps.inventory.models import InventoryTransaction
 
 
 @pytest.mark.django_db
@@ -20,3 +23,53 @@ def test_is_low_stock_true():
 def test_is_low_stock_false():
     item = InventoryItemFactory(current_quantity=Decimal("10"), min_stock_level=Decimal("4"))
     assert item.is_low_stock is False
+
+
+@pytest.mark.django_db
+def test_record_receipt_updates_quantity(staff_user):
+    item = InventoryItemFactory(current_quantity=Decimal("5"))
+    tx = record_transaction(
+        item=item,
+        type=InventoryTransaction.Type.RECEIPT,
+        quantity=Decimal("10"),
+        created_by=staff_user,
+        reference="PO-001",
+    )
+    item.refresh_from_db()
+    assert item.current_quantity == Decimal("15")
+    assert tx.quantity_before == Decimal("5")
+    assert tx.quantity_after == Decimal("15")
+
+
+@pytest.mark.django_db
+def test_record_consumption_reduces_quantity(staff_user):
+    item = InventoryItemFactory(current_quantity=Decimal("10"))
+    tx = record_transaction(
+        item=item,
+        type=InventoryTransaction.Type.CONSUMPTION,
+        quantity=Decimal("-3"),
+        created_by=staff_user,
+    )
+    item.refresh_from_db()
+    assert item.current_quantity == Decimal("7")
+    assert tx.quantity_after == Decimal("7")
+
+
+@pytest.mark.django_db
+def test_record_transaction_is_atomic(staff_user):
+    item = InventoryItemFactory(current_quantity=Decimal("5"))
+    original_qty = item.current_quantity
+    try:
+        with transaction.atomic():
+            record_transaction(
+                item=item,
+                type=InventoryTransaction.Type.RECEIPT,
+                quantity=Decimal("10"),
+                created_by=staff_user,
+            )
+            raise ValueError("Simulated failure")
+    except ValueError:
+        pass
+    item.refresh_from_db()
+    assert item.current_quantity == original_qty
+    assert item.transactions.count() == 0
