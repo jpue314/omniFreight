@@ -12,7 +12,7 @@
 
 This document specifies the GitHub workflow, CI/CD pipeline, environment strategy, security baseline, and vendor-decoupling architecture for omniFreight Phase 1. All decisions are scoped to the GitHub Flow model using Railway for staging, with a clean migration path to Hetzner VPS for production.
 
-Security controls in this design are implemented in compliance with the **OWASP Top 10 (2021)**, the **OWASP API Security Top 10 (2023)**, and the Non-Functional Requirements defined in `omniFreight_Requirements_v1.md` Section 5, specifically:
+Security controls in this design are implemented in compliance with the **OWASP Top 10:2025**, the **OWASP API Security Top 10 (2023)** (no 2025 edition published as of April 2026), and the Non-Functional Requirements defined in `omniFreight_Requirements_v1.md` Section 5, specifically:
 - Role-based access enforced on all API endpoints
 - No unauthenticated access to any data
 - All creates, edits, and deletes logged with user and timestamp
@@ -29,7 +29,7 @@ The following corrections apply to `omniFreight_Requirements_v1.md` and must be 
 | Section | Current | Corrected |
 |---|---|---|
 | 6.1 Phase 1 Integrations | Carrier Tracking APIs (FedEx, UPS, DHL) listed as Phase 1 | Move to Phase 2. Phase 1 tracking is manual entry only. |
-| 5. Non-Functional Requirements | No mention of OWASP compliance | Add: "All API and infrastructure controls are implemented in compliance with OWASP Top 10 (2021). See CI/CD workflow design for specific controls." |
+| 5. Non-Functional Requirements | No mention of OWASP compliance | Add: "All API and infrastructure controls are implemented in compliance with OWASP Top 10:2025 and OWASP API Security Top 10 (2023). See CI/CD workflow design for specific controls." |
 
 ---
 
@@ -311,20 +311,25 @@ No other application code changes. `django-storages` handles both backends trans
 
 This section documents controls applied so omniFreight can pass a penetration test at any point during Phase 1 — not just at launch. Controls are applied from the first line of feature code.
 
-### 10.1 OWASP Web Application Top 10 (2021)
+### 10.1 OWASP Top 10:2025
 
-| OWASP ID | Risk | Control in omniFreight |
+The 2025 edition introduced two new categories and reordered several risks from the 2021 edition:
+- **New:** A03 — Software Supply Chain Failures (broader than the old "Vulnerable Components")
+- **New:** A10 — Mishandling of Exceptional Conditions (replaces SSRF, which dropped out of the Top 10)
+- **Moved up:** Security Misconfiguration from #5 to #2
+
+| OWASP 2025 ID | Risk | Control in omniFreight |
 |---|---|---|
-| A01 — Broken Access Control | User A reads User B's data | Object-level permission checks on every ViewSet. `IsAuthenticated` global default. Role checks via `IsAdmin`/`IsStaff` permission classes. |
-| A02 — Cryptographic Failures | Plaintext secrets, weak tokens | `SECRET_KEY` via env var only. JWT blacklist on rotation. HTTPS enforced in staging + prod. HSTS with preload. |
-| A03 — Injection | SQL injection, command injection | Django ORM only — no raw SQL in application code. `bandit` SAST in CI flags unsafe subprocess calls and raw query patterns. |
-| A04 — Insecure Design | Architectural flaws | API-first, role-based from day one. Audit log on all writes. UUID primary keys prevent enumeration attacks. |
-| A05 — Security Misconfiguration | DEBUG in prod, open CORS, exposed admin | `DEBUG=False` globally by default. CORS explicitly whitelisted per environment. `ALLOWED_HOSTS` locked. `bandit` in CI. |
-| A06 — Vulnerable Components | Outdated dependencies with known CVEs | `pip-audit` + `npm audit` in CI every PR. Dependabot opens update PRs weekly. |
-| A07 — Auth Failures | Brute force, token theft | DRF throttling on token endpoint (20 req/min). JWT blacklist on rotation. 60-min access token lifetime. |
-| A08 — Software Integrity Failures | Tampered dependencies | `pip-audit` checks PyPI Advisory Database. `npm audit` checks npm advisory database. |
-| A09 — Logging and Monitoring Failures | No record of attacks in progress | Django logging config captures all 4xx/5xx with user + IP + timestamp. Auth and payment events logged at WARNING level. |
-| A10 — SSRF | Server triggers internal requests via user input | No user-supplied URLs used in server-side requests in Phase 1. Phase 2 carrier API polling validates against an allowlist of known carrier hostnames only. |
+| A01 — Broken Access Control | User A reads User B's data | Object-level permission checks on every ViewSet. `IsAuthenticated` global default. Role checks via `IsAdmin`/`IsStaff` permission classes. Tests verify cross-user data isolation on every endpoint. |
+| A02 — Security Misconfiguration | DEBUG in prod, open CORS, verbose errors, exposed admin | `DEBUG=False` globally by default. CORS explicitly whitelisted per environment. `ALLOWED_HOSTS` locked. DRF browsable API disabled in staging + prod. `bandit` SAST in CI. |
+| A03 — Software Supply Chain Failures *(new in 2025)* | Compromised or tampered dependencies and build pipeline | `pip-audit` + `npm audit` on every PR. Dependabot weekly update PRs. GitHub secret scanning on all commits. CI runs in GitHub-hosted runners — no self-hosted runner supply chain risk. |
+| A04 — Cryptographic Failures | Plaintext secrets, weak tokens, unencrypted data in transit | `SECRET_KEY` via env var only — never in code. JWT blacklist on rotation. HTTPS enforced in staging + prod. HSTS with preload. `SECURE_CONTENT_TYPE_NOSNIFF = True`. |
+| A05 — Injection | SQL injection, command injection, template injection | Django ORM exclusively — no raw SQL in application code. `bandit` SAST flags unsafe subprocess calls and concatenated query patterns on every PR. |
+| A06 — Insecure Design | Architectural flaws baked into the system | API-first, role-based design from day one. Audit log on all writes. UUID primary keys prevent ID enumeration. Payment records immutable once Confirmed. Pen test checklist run before each milestone. |
+| A07 — Authentication Failures | Brute force, token theft, missing expiry | DRF throttling on `/api/v1/auth/token/` (20 req/min anon). JWT blacklist on rotation. 60-min access token, 7-day refresh token. |
+| A08 — Software or Data Integrity Failures | Tampered packages, CI/CD pipeline compromise, unsafe deserialization | `pip-audit` + `npm audit` check advisory databases on every PR. No unsafe deserialization patterns in code — `bandit` flags these. CI pipeline runs in isolated GitHub-hosted runners. |
+| A09 — Security Logging and Alerting Failures | No detection of attacks, no alerting on anomalies | Django `logging` config captures all 4xx/5xx with user + IP + timestamp. Auth events and payment status changes logged at `WARNING`. Active in all environments including staging. |
+| A10 — Mishandling of Exceptional Conditions *(new in 2025)* | Stack traces in prod, unhandled errors leaking internal state | `DEBUG=False` suppresses stack traces in staging + prod. Custom DRF exception handler returns only clean `{errors}` envelope. All unhandled 500s logged with full context for debugging without exposure. Verified in pen test checklist. |
 
 ### 10.2 OWASP API Security Top 10 (2023)
 
