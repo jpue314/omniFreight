@@ -33,10 +33,13 @@ class VendorViewSet(EnvelopeMixin, AuditMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def items(self, request, pk=None):
         vendor = self.get_object()
-        from apps.inventory.models import InventoryItem
-        from apps.inventory.serializers import InventoryItemSerializer
-        qs = InventoryItem.objects.filter(vendor=vendor, is_active=True)
-        return Response({"data": InventoryItemSerializer(qs, many=True).data, "errors": None, "meta": None})
+        try:
+            from apps.inventory.models import InventoryItem
+            from apps.inventory.serializers import InventoryItemSerializer
+            qs = InventoryItem.objects.filter(vendor=vendor, is_active=True)
+            return Response({"data": InventoryItemSerializer(qs, many=True).data, "errors": None, "meta": None})
+        except ImportError:
+            return Response({"data": [], "errors": None, "meta": None})
 
     @action(detail=True, methods=["get"])
     def machines(self, request, pk=None):
