@@ -13,6 +13,7 @@ v1 = [
     path("users/", include("apps.users.urls")),
     path("notifications/", include("apps.notifications.urls")),
     path("vendors/", include("apps.vendors.urls")),
+    path("machines/", include("apps.machines.urls")),
     path("health/", include("apps.users.health_urls")),
 ]
 
