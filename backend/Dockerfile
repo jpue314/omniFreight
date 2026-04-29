@@ -14,7 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+RUN chmod +x entrypoint.sh
+
 EXPOSE 8000
 
-# sh -c is required so $PORT expands at runtime (exec form does not expand env vars)
-CMD ["sh", "-c", "python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120"]
+# entrypoint.sh is a shell script so $PORT expands correctly at runtime
+CMD ["./entrypoint.sh"]
