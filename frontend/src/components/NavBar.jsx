@@ -1,22 +1,20 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import NotificationBell from "./NotificationBell";
 
 const navItems = [
   { label: "Dashboard", to: "/" },
-  { label: "Shipments", to: "/shipments" },
   { label: "Inventory", to: "/inventory" },
+  { label: "Reorder", to: "/reorder" },
   { label: "Vendors", to: "/vendors" },
-  { label: "Payments", to: "/payments" },
+  { label: "Machines", to: "/machines" },
 ];
 
-const adminItems = [
-  { label: "Users", to: "/users" },
-];
+const adminItems = [{ label: "Users", to: "/users" }];
 
 export default function NavBar() {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
-
   const items = user?.role === "admin" ? [...navItems, ...adminItems] : navItems;
 
   return (
@@ -31,7 +29,7 @@ export default function NavBar() {
                   key={to}
                   to={to}
                   className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    pathname === to
+                    pathname === to || (to !== "/" && pathname.startsWith(to))
                       ? "bg-brand-700 text-white"
                       : "text-blue-100 hover:bg-brand-700 hover:text-white"
                   }`}
@@ -42,6 +40,7 @@ export default function NavBar() {
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm">
+            <NotificationBell />
             <span className="text-blue-200">{user?.full_name}</span>
             <span className="px-2 py-0.5 rounded bg-brand-700 text-xs uppercase tracking-wide">
               {user?.role}
