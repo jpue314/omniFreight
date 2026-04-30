@@ -56,11 +56,12 @@ export const useTransactions = (itemId) =>
 export const useCreateTransaction = (itemId) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data) =>
-      api.post(`/inventory/${itemId}/transactions/`, data).then((r) => r.data),
+    mutationFn: (data) => {
+      if (!itemId) return Promise.reject(new Error("itemId is required"));
+      return api.post(`/inventory/${itemId}/transactions/`, data).then((r) => r.data);
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["inventory", itemId] });
-      qc.invalidateQueries({ queryKey: ["inventory", itemId, "transactions"] });
+      qc.invalidateQueries({ queryKey: ["inventory"] });
       qc.invalidateQueries({ queryKey: ["reorder"] });
     },
   });
@@ -111,11 +112,12 @@ export const useMachineItems = (id) =>
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 
-export const useNotifications = (params = {}) =>
+export const useNotifications = (params = {}, options = {}) =>
   useQuery({
     queryKey: ["notifications", params],
     queryFn: () => api.get("/notifications/", { params }).then((r) => r.data),
     refetchInterval: 60_000,
+    ...options,
   });
 
 export const useUnreadCount = () =>
