@@ -1,4 +1,4 @@
-import { Link, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import NotificationBell from "./NotificationBell";
 
@@ -10,12 +10,9 @@ const navItems = [
   { label: "Machines", to: "/machines" },
 ];
 
-const adminItems = [{ label: "Users", to: "/users" }];
-
 export default function NavBar() {
   const { user, logout } = useAuth();
-  const { pathname } = useLocation();
-  const items = user?.role === "admin" ? [...navItems, ...adminItems] : navItems;
+  const items = navItems;
 
   return (
     <nav className="bg-brand-900 text-white">
@@ -25,17 +22,18 @@ export default function NavBar() {
             <span className="font-bold text-lg tracking-tight">omniFreight</span>
             <div className="hidden md:flex gap-1">
               {items.map(({ label, to }) => (
-                <Link
+                <NavLink
                   key={to}
                   to={to}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    pathname === to || (to !== "/" && pathname.startsWith(to))
-                      ? "bg-brand-700 text-white"
-                      : "text-blue-100 hover:bg-brand-700 hover:text-white"
-                  }`}
+                  end={to === "/"}
+                  className={({ isActive }) =>
+                    `px-3 py-2 rounded text-sm font-medium transition-colors ${
+                      isActive ? "bg-brand-700 text-white" : "text-blue-100 hover:bg-brand-700 hover:text-white"
+                    }`
+                  }
                 >
                   {label}
-                </Link>
+                </NavLink>
               ))}
             </div>
           </div>
