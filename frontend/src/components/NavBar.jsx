@@ -1,23 +1,18 @@
-import { Link, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import NotificationBell from "./NotificationBell";
 
 const navItems = [
   { label: "Dashboard", to: "/" },
-  { label: "Shipments", to: "/shipments" },
   { label: "Inventory", to: "/inventory" },
+  { label: "Reorder", to: "/reorder" },
   { label: "Vendors", to: "/vendors" },
-  { label: "Payments", to: "/payments" },
-];
-
-const adminItems = [
-  { label: "Users", to: "/users" },
+  { label: "Machines", to: "/machines" },
 ];
 
 export default function NavBar() {
   const { user, logout } = useAuth();
-  const { pathname } = useLocation();
-
-  const items = user?.role === "admin" ? [...navItems, ...adminItems] : navItems;
+  const items = navItems;
 
   return (
     <nav className="bg-brand-900 text-white">
@@ -27,21 +22,23 @@ export default function NavBar() {
             <span className="font-bold text-lg tracking-tight">omniFreight</span>
             <div className="hidden md:flex gap-1">
               {items.map(({ label, to }) => (
-                <Link
+                <NavLink
                   key={to}
                   to={to}
-                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                    pathname === to
-                      ? "bg-brand-700 text-white"
-                      : "text-blue-100 hover:bg-brand-700 hover:text-white"
-                  }`}
+                  end={to === "/"}
+                  className={({ isActive }) =>
+                    `px-3 py-2 rounded text-sm font-medium transition-colors ${
+                      isActive ? "bg-brand-700 text-white" : "text-blue-100 hover:bg-brand-700 hover:text-white"
+                    }`
+                  }
                 >
                   {label}
-                </Link>
+                </NavLink>
               ))}
             </div>
           </div>
           <div className="flex items-center gap-3 text-sm">
+            <NotificationBell />
             <span className="text-blue-200">{user?.full_name}</span>
             <span className="px-2 py-0.5 rounded bg-brand-700 text-xs uppercase tracking-wide">
               {user?.role}
